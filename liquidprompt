@@ -39,8 +39,6 @@ if test -n "${BASH_VERSION-}"; then
     _LP_MARK_SYMBOL='$'
 
     _LP_FIRST_INDEX=0
-    _LP_PERCENT='%'    # must be escaped on zsh
-    _LP_BACKSLASH='\\' # must be escaped on bash
 
     # Sed expression using extended regexp to match terminal
     # escape sequences with their wrappers
@@ -67,13 +65,11 @@ elif test -n "${ZSH_VERSION-}" ; then
     _LP_MARK_SYMBOL='%%'
 
     _LP_FIRST_INDEX=1
-    _LP_PERCENT='%%'
-    _LP_BACKSLASH="\\"
 
     _LP_CLEAN_ESC='%\{([^%]+|%[^}])*%\}'
 
     __lp_escape() {
-        ret="${1//\%/$_LP_PERCENT}"
+        ret="${1//\%/%%}"
     }
 else
     echo "liquidprompt: shell not supported" >&2
@@ -368,6 +364,7 @@ __lp_source_config() {
             # There is just no elegant way to handle this. Fallback to the old way with basic formatting support.
             _lp_path_format() {
                 lp_path=$LP_PATH_DEFAULT
+                lp_path_raw=$lp_path
                 lp_path_format="${LP_COLOR_PATH}${lp_path}${NO_COL}"
             }
         fi
@@ -502,8 +499,7 @@ lp_activate() {
     if _lp_multiplexer; then
         (( LP_ENABLE_TITLE = LP_ENABLE_TITLE && LP_ENABLE_SCREEN_TITLE ))
         LP_TITLE_OPEN=$'\Ek'
-        # "\e\" but on bash \ must be escaped
-        LP_TITLE_CLOSE=$'\E'"$_LP_BACKSLASH"
+        LP_TITLE_CLOSE=$'\E\\'
     else
         LP_TITLE_OPEN=$'\E]0;'
         LP_TITLE_CLOSE=$'\a'
@@ -891,18 +887,20 @@ _lp_path_format() {
 
     if [[ $path_length == 1 || $LP_PATH_METHOD == "truncate_to_last_dir" ]]; then
         if [[ $path_length > 1 ]]; then
-            __lp_escape "${display_path##*/}"
-            lp_path=$ret
+            lp_path=${display_path##*/}
         else
             # only root or home to show
-            __lp_escape "$display_path"
-            lp_path=$ret
+            lp_path=$display_path
         fi
 
+        lp_path_raw=$lp_path
+
+        __lp_escape "$lp_path"
+
         if [[ $display_path == $vcs_root_directory ]]; then
-            lp_path_format="${vcs_root_format}${lp_path}"
+            lp_path_format="${vcs_root_format}${ret}"
         else
-            lp_path_format="${last_directory_format}${lp_path}"
+            lp_path_format="${last_directory_format}${ret}"
         fi
         return
     else
@@ -943,14 +941,14 @@ _lp_path_format() {
         if [[ $current_path == $vcs_root_directory ]]; then
             __lp_end_path_left_shortening
             # No shortening
+            lp_path+=$current_directory
             __lp_escape "$current_directory"
-            lp_path+=$ret
             lp_path_format+="${vcs_root_format}${ret}"
         elif [[ -z $path_to_proccess ]]; then
             __lp_end_path_left_shortening
             # Last directory
+            lp_path+=$current_directory
             __lp_escape "$current_directory"
-            lp_path+=$ret
             lp_path_format+="${last_directory_format}${ret}"
         elif (( LP_ENABLE_SHORTEN_PATH && directory_count > LP_PATH_KEEP \
             && ( shortened_path_length > max_len || ( shortened_path_length >= max_len && is_shortening ) ) )); then
@@ -958,8 +956,8 @@ _lp_path_format() {
             if [[ $LP_PATH_METHOD == "truncate_chars_to_unique_dir" ]] && \
                 __lp_get_unique_directory "$current_path"; then
 
+                lp_path+=$lp_unique_directory
                 __lp_escape "$lp_unique_directory"
-                lp_path+=$ret
                 lp_path_format+="${shortened_directory_format}${ret}"
                 shortened_path_length=$(( shortened_path_length - ${#current_directory} + ${#lp_unique_directory} ))
             elif [[ $LP_PATH_METHOD == "truncate_chars_from_path_left" ]]; then
@@ -989,8 +987,8 @@ _lp_path_format() {
                     shortened_path_length=$(( shortened_path_length - needed_length ))
 
                     shortened_path="${LP_MARK_SHORTEN_PATH}${current_directory:$needed_length}"
+                    lp_path+=$shortened_path
                     __lp_escape "$shortened_path"
-                    lp_path+=$ret
                     lp_path_format+="${shortened_directory_format}${ret}"
 
                     is_shortening=0
@@ -999,29 +997,29 @@ _lp_path_format() {
                 (( ${#LP_MARK_SHORTEN_PATH} + LP_PATH_CHARACTER_KEEP < ${#current_directory} )); then
 
                 shortened_path="${current_directory:0:$LP_PATH_CHARACTER_KEEP}${LP_MARK_SHORTEN_PATH}"
+                lp_path+=$shortened_path
                 __lp_escape "$shortened_path"
-                lp_path+=$ret
                 lp_path_format+="${shortened_directory_format}${ret}"
                 shortened_path_length=$(( shortened_path_length - ${#current_directory} + ${#LP_MARK_SHORTEN_PATH} + LP_PATH_CHARACTER_KEEP ))
             elif [[ $LP_PATH_METHOD == "truncate_chars_from_dir_middle" ]] && \
                 (( ${#LP_MARK_SHORTEN_PATH} + LP_PATH_CHARACTER_KEEP * 2 < ${#current_directory} )); then
 
                 shortened_path="${current_directory:0:$LP_PATH_CHARACTER_KEEP}${LP_MARK_SHORTEN_PATH}${current_directory: -$LP_PATH_CHARACTER_KEEP}"
+                lp_path+=$shortened_path
                 __lp_escape "$shortened_path"
-                lp_path+=$ret
                 lp_path_format+="${shortened_directory_format}${ret}"
                 shortened_path_length=$(( shortened_path_length - ${#current_directory} + ${#LP_MARK_SHORTEN_PATH} + LP_PATH_CHARACTER_KEEP * 2 ))
             else
                 # Need to shorten, but no method matched, or the matched method
                 # did not make the string any shorter.
+                lp_path+=$current_directory
                 __lp_escape "$current_directory"
-                lp_path+=$ret
                 lp_path_format+="${path_format}${ret}"
             fi
         else
             __lp_end_path_left_shortening
+            lp_path+=$current_directory
             __lp_escape "$current_directory"
-            lp_path+=$ret
             lp_path_format+="${path_format}${ret}"
         fi
 
@@ -1032,6 +1030,8 @@ _lp_path_format() {
             lp_path_format+="${separator_format}${separator}"
         fi
     done
+
+    lp_path_raw=$lp_path
 }
 
 ###############
@@ -1069,9 +1069,6 @@ _lp_chroot() {
     if [[ -r /etc/debian_chroot ]]; then
         IFS= read -r lp_chroot </etc/debian_chroot
         if [[ -n "$lp_chroot" ]]; then
-            local ret
-            __lp_escape "$lp_chroot"
-            lp_chroot=$ret
             return 0
         fi
     fi
@@ -1087,6 +1084,7 @@ _lp_error() {
 _lp_error_color() {
     _lp_error || return "$?"
 
+    lp_error_raw=$lp_error
     lp_error_color="${LP_COLOR_ERR}${lp_error}${NO_COL}"
 }
 
@@ -1104,34 +1102,25 @@ _lp_multiplexer() {
 _lp_http_proxy() {
     (( LP_ENABLE_PROXY )) || return 2
 
-    if [[ -n "${http_proxy-}${HTTP_PROXY-}${https_proxy-}${HTTPS_PROXY-}${all_proxy-}${ALL_PROXY-}" ]]; then
-        local ret
-        __lp_escape "${http_proxy:-${HTTP_PROXY:-${https_proxy:-${HTTPS_PROXY:-${all_proxy:-$ALL_PROXY}}}}}"
-        lp_http_proxy=$ret
-    else
-        return 1
-    fi
+    lp_http_proxy="${http_proxy:-${HTTP_PROXY:-${https_proxy:-${HTTPS_PROXY:-${all_proxy:-$ALL_PROXY}}}}}"
+
+    [[ -n "${lp_http_proxy}" ]]
 }
 
 _lp_http_proxy_color() {
     _lp_http_proxy || return "$?"
 
+    lp_http_proxy_raw=$LP_MARK_PROXY
     lp_http_proxy_color="${LP_COLOR_PROXY}${LP_MARK_PROXY}${NO_COL}"
 }
 
 _lp_python_env() {
     (( LP_ENABLE_VIRTUALENV )) || return 2
 
-    local ret
-
-    # Why are these trunkated to the last '/' section? It has always been this
-    # way, and the original author didn't explain why.
     if [[ -n "${VIRTUAL_ENV-}" ]]; then
-        __lp_escape "${VIRTUAL_ENV##*/}"
-        lp_python_env=$ret
+        lp_python_env="${VIRTUAL_ENV##*/}"
     elif [[ -n "${CONDA_DEFAULT_ENV-}" ]]; then
-        __lp_escape "${CONDA_DEFAULT_ENV##*/}"
-        lp_python_env=$ret
+        lp_python_env="${CONDA_DEFAULT_ENV##*/}"
     else
         return 1
     fi
@@ -1140,16 +1129,18 @@ _lp_python_env() {
 _lp_python_env_color() {
     _lp_python_env || return "$?"
 
-    lp_python_env_color="[${LP_COLOR_VIRTUALENV}${lp_python_env}${NO_COL}]"
+    local ret
+    __lp_escape "$lp_python_env"
+
+    lp_python_env_raw="[${lp_python_env}]"
+    lp_python_env_color="[${LP_COLOR_VIRTUALENV}${ret}${NO_COL}]"
 }
 
 _lp_software_collections() {
     (( LP_ENABLE_SCLS )) || return 2
 
     if [[ -n "${X_SCLS-}" ]]; then
-        local ret
-        __lp_escape "${X_SCLS%"${X_SCLS##*[![:space:]]}"}"
-        lp_software_collections=$ret
+        lp_software_collections="${X_SCLS%"${X_SCLS##*[![:space:]]}"}"
     else
         return 1
     fi
@@ -1158,29 +1149,32 @@ _lp_software_collections() {
 _lp_software_collections_color() {
     _lp_software_collections || return "$?"
 
-    lp_software_collections_color="[${LP_COLOR_VIRTUALENV}${lp_software_collections}${NO_COL}]"
+    local ret
+    __lp_escape "$lp_software_collections"
+
+    lp_software_collections_raw="[${lp_software_collections}]"
+    lp_software_collections_color="[${LP_COLOR_VIRTUALENV}${ret}${NO_COL}]"
 }
 
 
 _lp_kubernetes_context() {
     (( LP_ENABLE_KUBECONTEXT )) || return 2
 
-    local kubernetes_context
-    kubernetes_context=$(kubectl config current-context 2>/dev/null) || return 1
+    lp_kubernetes_context=$(kubectl config current-context 2>/dev/null) || return 1
 
     if [[ -n "$LP_DELIMITER_KUBECONTEXT" ]]; then
-        kubernetes_context="${kubernetes_context%%${LP_DELIMITER_KUBECONTEXT}*}"
+        lp_kubernetes_context="${lp_kubernetes_context%%${LP_DELIMITER_KUBECONTEXT}*}"
     fi
-
-    local ret
-    __lp_escape "$kubernetes_context"
-    lp_kubernetes_context=$ret
 }
 
 _lp_kubernetes_context_color() {
     _lp_kubernetes_context || return "$?"
 
-    lp_kubernetes_context_color="[${LP_MARK_KUBECONTEXT}${LP_COLOR_KUBECONTEXT}${lp_kubernetes_context}${NO_COL}]"
+    local ret
+    __lp_escape "$lp_kubernetes_context"
+
+    lp_kubernetes_context_raw="[${LP_MARK_KUBECONTEXT}${lp_kubernetes_context}]"
+    lp_kubernetes_context_color="[${LP_MARK_KUBECONTEXT}${LP_COLOR_KUBECONTEXT}${ret}${NO_COL}]"
 }
 
 # Same as bash '\l', but can be inlined as a constant as the value will not
@@ -1215,10 +1209,6 @@ _lp_username() {
             lp_username=$(id -nu 2>/dev/null)
         fi
 
-        local ret
-        __lp_escape "$lp_username"
-        lp_username=$ret
-
         return 0
     else
         lp_username=''
@@ -1229,7 +1219,11 @@ _lp_username() {
 _lp_username_color() {
     _lp_username || return "$?"
 
-    lp_username_color="${LP_COLOR_USER}${lp_username}${NO_COL}"
+    local ret
+    __lp_escape "$lp_username"
+
+    lp_username_raw=$lp_username
+    lp_username_color="${LP_COLOR_USER}${ret}${NO_COL}"
 }
 
 # Test the code with the commands:
@@ -1265,10 +1259,6 @@ _lp_hostname() {
         if ! (( LP_ENABLE_FQDN )); then
             lp_hostname=${lp_hostname%%.*}
         fi
-
-        local ret
-        __lp_escape "$lp_hostname"
-        lp_hostname=$ret
     else
         return 2
     fi
@@ -1284,28 +1274,39 @@ _lp_hostname_color() {
         lp_hostname_color="${LP_COLOR_X11_OFF}"
     fi
 
+    local ret
+
+    lp_hostname_raw=
+
     if _lp_chroot; then
-        lp_hostname_color+="(${lp_chroot})"
+        __lp_escape "$lp_chroot"
+
+        lp_hostname_raw+="(${lp_chroot})"
+        lp_hostname_color+="(${ret})"
     fi
 
     if _lp_hostname; then
+        lp_hostname_raw+="@${lp_hostname}"
+
+        __lp_escape "$lp_hostname"
+
         case "$lp_connection" in
         lcl)
-            lp_hostname_color+="@${LP_COLOR_HOST}${lp_hostname}${NO_COL}"
+            lp_hostname_color+="@${LP_COLOR_HOST}${ret}${NO_COL}"
             ;;
         ssh)
             # If we want a different color for each host
             (( LP_ENABLE_SSH_COLORS )) && LP_COLOR_SSH="$LP_COLOR_HOST_HASH"
-            lp_hostname_color+="@${LP_COLOR_SSH}${lp_hostname}${NO_COL}"
+            lp_hostname_color+="@${LP_COLOR_SSH}${ret}${NO_COL}"
             ;;
         su)
-            lp_hostname_color+="@${LP_COLOR_SU}${lp_hostname}${NO_COL}"
+            lp_hostname_color+="@${LP_COLOR_SU}${ret}${NO_COL}"
             ;;
         tel)
-            lp_hostname_color+="@${LP_COLOR_TELNET}${lp_hostname}${NO_COL}"
+            lp_hostname_color+="@${LP_COLOR_TELNET}${ret}${NO_COL}"
             ;;
         *)
-            lp_hostname_color+="@${NO_COL}${lp_hostname}" # defaults to no color
+            lp_hostname_color+="@${NO_COL}${ret}" # defaults to no color
             ;;
         esac
     else
@@ -1335,27 +1336,26 @@ _lp_dirstack() {
 _lp_dirstack_color() {
     _lp_dirstack || return "$?"
 
-    lp_dirstack_color="${LP_COLOR_DIRSTACK}${LP_MARK_DIRSTACK}${lp_dirstack}${NO_COL}"
+    lp_dirstack_raw="${LP_MARK_DIRSTACK}${lp_dirstack}"
+    lp_dirstack_color="${LP_COLOR_DIRSTACK}${lp_dirstack_raw}${NO_COL}"
 }
 
 _lp_aws_profile() {
     (( LP_ENABLE_AWS_PROFILE )) || return 2
 
-    local ret
+    lp_aws_profile="${AWS_PROFILE-${AWS_DEFAULT_PROFILE-}}"
 
-    local aws_profile="${AWS_PROFILE-${AWS_DEFAULT_PROFILE-}}"
-    if [[ -n $aws_profile ]]; then
-        __lp_escape "${aws_profile}"
-        lp_aws_profile=$ret
-    else
-        return 1
-    fi
+    [[ -n $lp_aws_profile ]]
 }
 
 _lp_aws_profile_color() {
     _lp_aws_profile || return "$?"
 
-    lp_aws_profile_color="[${LP_COLOR_AWS_PROFILE}${lp_aws_profile}${NO_COL}]"
+    local ret
+    __lp_escape "$lp_aws_profile"
+
+    lp_aws_profile_raw="[${lp_aws_profile}]"
+    lp_aws_profile_color="[${LP_COLOR_AWS_PROFILE}${ret}${NO_COL}]"
 }
 
 ################
@@ -1400,17 +1400,29 @@ _lp_jobcount() {
 _lp_jobcount_color() {
     (( LP_ENABLE_JOBS || LP_ENABLE_DETACHED_SESSIONS )) || return 2
 
+    lp_jobcount_raw=
     lp_jobcount_color=
 
-    _lp_detached_sessions && lp_jobcount_color="${LP_COLOR_JOB_D}${lp_detached_sessions}d${NO_COL}"
+    if _lp_detached_sessions; then
+        lp_jobcount_raw="${lp_detached_sessions}d"
+        lp_jobcount_color="${LP_COLOR_JOB_D}${lp_detached_sessions}d${NO_COL}"
+    fi
 
     if _lp_jobcount; then
         if (( lp_running_jobs > 0 )); then
-            [[ -n "$lp_jobcount_color" ]] && lp_jobcount_color+='/'
+            if [[ -n "$lp_jobcount_color" ]]; then
+                lp_jobcount_raw+='/'
+                lp_jobcount_color+='/'
+            fi
+            lp_jobcount_raw+="${lp_running_jobs}&"
             lp_jobcount_color+="${LP_COLOR_JOB_R}${lp_running_jobs}&${NO_COL}"
         fi
         if (( lp_stopped_jobs > 0 )); then
-            [[ -n "$lp_jobcount_color" ]] && lp_jobcount_color+='/'
+            if [[ -n "$lp_jobcount_color" ]]; then
+                lp_jobcount_raw+='/'
+                lp_jobcount_color+='/'
+            fi
+            lp_jobcount_raw+="${lp_stopped_jobs}z"
             lp_jobcount_color+="${LP_COLOR_JOB_Z}${lp_stopped_jobs}z${NO_COL}"
         fi
     fi
@@ -1511,22 +1523,29 @@ _lp_vcs_details_color() {
         branch="${lp_vcs_commit_id:0:7}"
     fi
 
+    local ret
+    __lp_escape "$branch"
+    branch=$ret
+
     lp_vcs_details_color="$LP_COLOR_UP"
 
-    local has_commit=
+    local has_commit_raw= has_commit_color=
     if _lp_vcs_commits_off_remote; then
         lp_vcs_details_color="$LP_COLOR_COMMITS_BEHIND"
         if [[ "$lp_vcs_commit_ahead" -ne "0" && "$lp_vcs_commit_behind" -ne "0" ]]; then
-            has_commit="${LP_COLOR_COMMITS}+$lp_vcs_commit_ahead${NO_COL}/${LP_COLOR_COMMITS_BEHIND}-$lp_vcs_commit_behind${NO_COL}"
+            has_commit_raw="+$lp_vcs_commit_ahead/-$lp_vcs_commit_behind"
+            has_commit_color="${LP_COLOR_COMMITS}+$lp_vcs_commit_ahead${NO_COL}/${LP_COLOR_COMMITS_BEHIND}-$lp_vcs_commit_behind${NO_COL}"
         elif [[ "$lp_vcs_commit_ahead" -ne "0" ]]; then
-            has_commit="${LP_COLOR_COMMITS}$lp_vcs_commit_ahead${NO_COL}"
+            has_commit_raw=$lp_vcs_commit_ahead
+            has_commit_color="${LP_COLOR_COMMITS}$lp_vcs_commit_ahead${NO_COL}"
             lp_vcs_details_color="$LP_COLOR_COMMITS"
         elif [[ "$lp_vcs_commit_behind" -ne "0" ]]; then
-            has_commit="${LP_COLOR_COMMITS_BEHIND}-$lp_vcs_commit_behind${NO_COL}"
+            has_commit_raw="-$lp_vcs_commit_behind"
+            has_commit_color="${LP_COLOR_COMMITS_BEHIND}-$lp_vcs_commit_behind${NO_COL}"
         fi
     fi
 
-    local ret has_lines=
+    local has_lines=
     if _lp_vcs_uncommitted_files; then
         _lp_vcs_unstaged_lines; ret=$?
         # Only show unstaged changes if the VCS supports staging, otherwise
@@ -1542,26 +1561,35 @@ _lp_vcs_details_color() {
         lp_vcs_details_color="$LP_COLOR_CHANGES"
     fi
 
+    lp_vcs_details_raw="$branch"
     lp_vcs_details_color+="$branch"
-    if [[ -n "$has_lines" || -n "$has_commit" ]]; then
+
+    if [[ -n "$has_lines" || -n "$has_commit_raw" ]]; then
+        lp_vcs_details_raw+="("
         lp_vcs_details_color+="${NO_COL}("
         if [[ -n "$has_lines" ]]; then
-            lp_vcs_details_color+="${LP_COLOR_DIFF}${has_lines}${NO_COL}${has_commit:+,}"
+            lp_vcs_details_raw+="${has_lines}${has_commit_raw:+,}"
+            lp_vcs_details_color+="${LP_COLOR_DIFF}${has_lines}${NO_COL}${has_commit_raw:+,}"
         fi
-        lp_vcs_details_color+="${has_commit})"
+        lp_vcs_details_raw+="${has_commit_raw})"
+        lp_vcs_details_color+="${has_commit_color})"
     fi
 
     if _lp_vcs_stash_count; then
+        lp_vcs_details_raw+="$LP_MARK_STASH"
         lp_vcs_details_color+="$LP_COLOR_COMMITS$LP_MARK_STASH"
     fi
 
     if _lp_vcs_untracked_files; then
+        lp_vcs_details_raw+="$LP_MARK_UNTRACKED"
         lp_vcs_details_color+="$LP_COLOR_CHANGES$LP_MARK_UNTRACKED"
     fi
 
     if _lp_vcs_head_status; then
+        lp_vcs_details_raw+=" $lp_vcs_head_status"
         lp_vcs_details_color+=" $LP_COLOR_CHANGES$lp_vcs_head_status"
         if [[ -n "${lp_vcs_head_details-}" ]]; then
+            lp_vcs_details_raw+="(${lp_vcs_head_details})"
             lp_vcs_details_color+="(${lp_vcs_head_details})"
         fi
     fi
@@ -1657,12 +1685,11 @@ _lp_git_active() {
 
 # Get the branch name of the Git repo in the current directory.
 _lp_git_branch() {
-    local branch ret
+    local branch
     # Recent versions of Git support the --short option for symbolic-ref, but
     # not 1.7.9 (Ubuntu 12.04)
     if branch="$(\git symbolic-ref -q HEAD 2>/dev/null)"; then
-        __lp_escape "${branch#refs/heads/}"
-        lp_vcs_branch="$ret"
+        lp_vcs_branch="${branch#refs/heads/}"
     else
         return 1
     fi
@@ -1670,13 +1697,7 @@ _lp_git_branch() {
 
 # Get a tag name of the Git repo in the current directory.
 _lp_git_tag() {
-    local tag ret
-    if tag="$(\git describe --tags --exact-match 2>/dev/null)"; then
-        __lp_escape "$tag"
-        lp_vcs_tag="$ret"
-    else
-        return 1
-    fi
+    lp_vcs_tag="$(\git describe --tags --exact-match 2>/dev/null)" || return 1
 }
 
 # Get the current full commit hash of the repo in the current directory.
@@ -1874,37 +1895,21 @@ _lp_hg_active() {
 
 # Get the branch name of the Mercurial repo in the current directory.
 _lp_hg_branch() {
-    local branch ret
-    if branch="$(\hg branch 2>/dev/null)"; then
-        __lp_escape "$branch"
-        lp_vcs_branch="$ret"
-    else
-        # This should never happen. Should this function return a branch name
-        # only if the head of the branch is checked out? But there can be
-        # multiple heads of a branch...
-        return 1
-    fi
+    lp_vcs_branch="$(\hg branch 2>/dev/null)" || return 1
 }
 
 # Get the bookmark name of the Mercurial repo in the current directory.
 _lp_hg_bookmark() {
-    local bookmark ret
-    if bookmark="$(\hg bookmark --list --quiet . 2>/dev/null)"; then
-        __lp_escape "$bookmark"
-        lp_vcs_bookmark="$ret"
-    else
-        return 1
-    fi
+    lp_vcs_bookmark="$(\hg bookmark --list --quiet . 2>/dev/null)" || return 1
 }
 
 # Get the most recent tag that refers to the current revision.
 _lp_hg_tag() {
-    local tags ret
+    local tags
     tags="$(\hg identify --template='{tags}' 2>/dev/null)"
     if [[ -n "$tags" ]]; then
         # Tags are separated by ':', get the first one
-        __lp_escape "${tags%%:*}"
-        lp_vcs_tag="$ret"
+        lp_vcs_tag="${tags%%:*}"
     else
         return 1
     fi
@@ -1988,7 +1993,7 @@ _lp_svn_active() {
 
 # Get the branch name of the repo in the current directory.
 _lp_svn_branch() {
-    local ret url
+    local url
     # SVN info shows repository-relative URLs since v1.8
     url="$(LC_ALL=C \svn info 2>/dev/null)"
     url="${url#*Relative URL: }"
@@ -1999,12 +2004,10 @@ _lp_svn_branch() {
         lp_vcs_branch=trunk
     elif [[ "$url" == */branches/?* ]]; then
         url="${url##*/branches/}"
-        __lp_escape "${url%/*}"
-        lp_vcs_branch="$ret"
+        lp_vcs_branch="${url%/*}"
     elif [[ "$url" == */tags/?* ]]; then
         url="${url##*/tags/}"
-        __lp_escape "${url%/*}"
-        lp_vcs_branch="tag/$ret"
+        lp_vcs_branch="${url%/*}"
     else
         return 1
     fi
@@ -2076,8 +2079,7 @@ _lp_fossil_branch() {
     fi
 
     if [[ -n "$branch" ]]; then
-        __lp_escape "$branch"
-        lp_vcs_branch="$ret"
+        lp_vcs_branch="$branch"
     else
         return 1
     fi
@@ -2155,13 +2157,7 @@ _lp_bzr_active() {
 
 # Get the branch name of the current directory
 _lp_bzr_branch() {
-    local branch ret
-    if branch="$(\bzr nick 2> /dev/null)"; then
-        __lp_escape "$branch"
-        lp_vcs_branch="$ret"
-    else
-        return 1
-    fi
+    lp_vcs_branch="$(\bzr nick 2> /dev/null)" || return 1
 }
 
 # Get the most recent tag that refers to the current revision.
@@ -2169,8 +2165,7 @@ _lp_bzr_tag() {
     local tag ret eol
     IFS=$' \t' read tag eol <<<"$(LC_ALL=C \bzr tags --revision=last:1 2>/dev/null)"
     if [[ -n "$tag" ]]; then
-        __lp_escape "$tag"
-        lp_vcs_tag="$ret"
+        lp_vcs_tag="$tag"
     else
         return 1
     fi
@@ -2314,17 +2309,21 @@ _lp_battery_color() {
     elif (( _status == 3 && lp_battery != 100 )); then
         # charging and above threshold and not 100%
         # green ⏚
+        lp_battery_raw=$LP_MARK_ADAPTER
         lp_battery_color="${LP_COLOR_CHARGING_ABOVE}${LP_MARK_ADAPTER}${NO_COL}"
     elif (( _status == 2 )); then
         # charging but under threshold
         # yellow ⏚
+        lp_battery_raw=$LP_MARK_ADAPTER
         lp_battery_color="${LP_COLOR_CHARGING_UNDER}${LP_MARK_ADAPTER}${NO_COL}"
     elif (( _status == 1 )); then
         # discharging but above threshold
         # yellow ⌁
+        lp_battery_raw=$LP_MARK_BATTERY
         lp_battery_color="${LP_COLOR_DISCHARGING_ABOVE}${LP_MARK_BATTERY}${NO_COL}"
     # discharging and under threshold
     else
+        lp_battery_raw=$LP_MARK_BATTERY
         lp_battery_color="${LP_COLOR_DISCHARGING_UNDER}${LP_MARK_BATTERY}${NO_COL}"
 
         if (( LP_PERCENTS_ALWAYS )); then
@@ -2355,7 +2354,12 @@ _lp_battery_color() {
 
             local ret
             _lp_color_map "$idx" 10
-            lp_battery_color+="${ret}${lp_battery}${_LP_PERCENT}${NO_COL}"
+            lp_battery_color+=${ret}
+
+            __lp_escape "${lp_battery}%"
+
+            lp_battery_raw+="${lp_battery}%"
+            lp_battery_color+="${ret}${NO_COL}"
         fi
     fi
 }
@@ -2395,6 +2399,7 @@ __lp_runtime_after() {
 _lp_runtime_color() {
     _lp_runtime_format || return "$?"
 
+    lp_runtime_raw=$lp_runtime_format
     lp_runtime_color="${LP_COLOR_RUNTIME}${lp_runtime_format}${NO_COL}"
 }
 
@@ -2437,15 +2442,14 @@ esac
 _lp_load() {
     (( LP_ENABLE_LOAD )) || return 2
 
-    local lp_cpu_load ret
+    local lp_cpu_load
 
     # Get value (OS-specific) into lp_cpu_load
     _lp_cpu_load
 
-    __lp_escape "${lp_cpu_load:-0}"
-    lp_load=$ret
+    lp_load="${lp_cpu_load:-0}"
 
-    __lp_floating_scale "${lp_cpu_load:-0}" 100
+    __lp_floating_scale "$lp_load" 100
     lp_load_adjusted=$(( ret / _lp_CPUNUM ))
 
     (( lp_load_adjusted >= _LP_LOAD_THRESHOLD ))
@@ -2457,10 +2461,13 @@ _lp_load_color() {
 
     local ret
     _lp_color_map "$lp_load_adjusted" "$_LP_LOAD_CAP"
+    lp_load_raw=$LP_MARK_LOAD
     lp_load_color="${ret}${LP_MARK_LOAD}"
 
     if (( LP_PERCENTS_ALWAYS )); then
-        lp_load_color+="${lp_load}"
+        __lp_escape "$lp_load"
+        lp_load_raw+=$lp_load
+        lp_load_color+=$ret
     fi
     lp_load_color+="$NO_COL"
 }
@@ -2531,6 +2538,7 @@ _lp_temperature_color() {
 
     local ret
     _lp_color_map "$lp_temperature" 120
+    lp_temperature_raw="${LP_MARK_TEMP}${lp_temperature}°"
     lp_temperature_color="${LP_MARK_TEMP}${ret}${lp_temperature}°${NO_COL}"
 }
 
@@ -2634,21 +2642,24 @@ _lp_analog_time() {
 _lp_analog_time_color() {
     _lp_analog_time || return "$?"
 
+    lp_analog_time_raw=$lp_analog_time
     lp_analog_time_color="${LP_COLOR_TIME}${lp_analog_time}${NO_COL}"
 }
 
 _lp_time() {
     (( LP_ENABLE_TIME && ! LP_TIME_ANALOG )) || return 2
 
-    local ret
-    __lp_escape "$(date "+${LP_TIME_FORMAT}")"
-    lp_time=$ret
+    lp_time="$(date "+${LP_TIME_FORMAT}")"
 }
 
 _lp_time_color() {
     _lp_time || return "$?"
 
-    lp_time_color="${LP_COLOR_TIME}${lp_time}${NO_COL}"
+    local ret
+    __lp_escape "$lp_time"
+
+    lp_time_raw=$lp_time
+    lp_time_color="${LP_COLOR_TIME}${ret}${NO_COL}"
 }
 
 #################
@@ -2675,12 +2686,15 @@ _lp_default_theme_activate() {
     # The user or connection type is not expected to change from inside the
     # shell, so we build this just once.
     if _lp_username_color; then
+        LP_USER_RAW="$lp_username_raw"
         LP_USER="$lp_username_color"
     else
+        LP_USER_RAW=
         LP_USER=
     fi
 
     _lp_hostname_color
+    LP_HOST_RAW="$lp_hostname_raw"
     LP_HOST="$lp_hostname_color"
 
     # If we are running in a terminal multiplexer, brackets are colored
@@ -2709,40 +2723,52 @@ _lp_default_theme_directory() {
         fi
     fi
 
-    local lp_path lp_path_format
+    local lp_path lp_path_raw lp_path_format
     _lp_path_format "$LP_COLOR_PATH" "$LP_COLOR_PATH_LAST_DIR" "$LP_COLOR_PATH_VCS_ROOT" "$LP_COLOR_PATH_SHORTENED" "/" "$LP_COLOR_PATH_SEPARATOR"
 
+    LP_PWD_RAW=$lp_path_raw
     LP_PWD="${lp_path_format}${NO_COL}"
 }
 
 _lp_default_theme_prompt_data() {
     # left of main prompt: space at right
     if _lp_jobcount_color; then
+        LP_JOBS_RAW="$lp_jobcount_raw "
         LP_JOBS="$lp_jobcount_color "
     else
+        LP_JOBS_RAW=
         LP_JOBS=
     fi
     if _lp_temperature_color; then
+        LP_TEMP_RAW="$lp_temperature_raw "
         LP_TEMP="$lp_temperature_color "
     else
+        LP_TEMP_RAW=
         LP_TEMP=
     fi
     if _lp_load_color; then
+        LP_LOAD_RAW="$lp_load_raw "
         LP_LOAD="$lp_load_color "
     else
+        LP_LOAD_RAW=
         LP_LOAD=
     fi
     if _lp_battery_color; then
+        LP_BATT_RAW="$lp_battery_raw "
         LP_BATT="$lp_battery_color "
     else
+        LP_BATT_RAW=
         LP_BATT=
     fi
 
     if _lp_time_color; then
+        LP_TIME_RAW="$lp_time_raw "
         LP_TIME="$lp_time_color "
     elif _lp_analog_time_color; then
+        LP_TIME_RAW="$lp_analog_time_raw "
         LP_TIME="$lp_analog_time_color "
     else
+        LP_TIME_RAW=
         LP_TIME=
     fi
 
@@ -2751,61 +2777,80 @@ _lp_default_theme_prompt_data() {
     fi
 
     if _lp_dirstack_color; then
+        LP_DIRSTACK_RAW=" $lp_dirstack_raw"
         LP_DIRSTACK=" $lp_dirstack_color"
     else
+        LP_DIRSTACK_RAW=
         LP_DIRSTACK=
     fi
 
     # in main prompt: no space
     if _lp_http_proxy_color; then
+        LP_PROXY_RAW="$lp_http_proxy_raw"
         LP_PROXY="$lp_http_proxy_color"
     else
+        LP_PROXY_RAW=
         LP_PROXY=
     fi
 
     if _lp_python_env_color; then
+        LP_VENV_RAW=" $lp_python_env_raw"
         LP_VENV=" $lp_python_env_color"
     else
+        LP_VENV_RAW=
         LP_VENV=
     fi
 
     if _lp_kubernetes_context_color; then
+        LP_KUBECONTEXT_RAW=" $lp_kubernetes_context_raw"
         LP_KUBECONTEXT=" $lp_kubernetes_context_color"
     else
+        LP_KUBECONTEXT_RAW=
         LP_KUBECONTEXT=
     fi
 
     if _lp_software_collections_color; then
+        LP_SCLS_RAW=" $lp_software_collections_raw"
         LP_SCLS=" $lp_software_collections_color"
     else
+        LP_SCLS_RAW=
         LP_SCLS=
     fi
 
     if _lp_aws_profile_color; then
+        LP_AWS_PROFILE_RAW=" $lp_aws_profile_raw"
         LP_AWS_PROFILE=" $lp_aws_profile_color"
     else
+        LP_AWS_PROFILE_RAW=
         LP_AWS_PROFILE=
     fi
 
     if _lp_runtime_color; then
+        LP_RUNTIME_RAW=" $lp_runtime_raw"
         LP_RUNTIME=" $lp_runtime_color"
     else
+        LP_RUNTIME_RAW=
         LP_RUNTIME=
     fi
 
     if _lp_error_color; then
+        LP_ERR_RAW=" $lp_error_raw"
         LP_ERR=" $lp_error_color"
     else
+        LP_ERR_RAW=
         LP_ERR=
     fi
 
     if _lp_find_vcs && _lp_vcs_details_color; then
+        LP_VCS_RAW=" $lp_vcs_details_raw"
         LP_VCS=" $lp_vcs_details_color"
     else
+        LP_VCS_RAW=
         LP_VCS=
     fi
 
     _lp_smart_mark
+    LP_MARK_RAW="${lp_smart_mark} "
     LP_MARK="${lp_smart_mark}${NO_COL} "
 }
 
@@ -2815,23 +2860,30 @@ _lp_default_theme_prompt_template() {
     fi
 
     if [[ -z "${LP_PS1-}" ]]; then
+        local title
+
         # add title escape time, jobs, load and battery
         PS1="${LP_PS1_PREFIX}${LP_TIME}${LP_BATT}${LP_LOAD}${LP_TEMP}${LP_JOBS}"
+        title="${LP_PS1_PREFIX}${LP_TIME_RAW}${LP_BATT_RAW}${LP_LOAD_RAW}${LP_TEMP_RAW}${LP_JOBS_RAW}"
         # add user, host and permissions colon
         PS1+="${LP_BRACKET_OPEN}${LP_USER}${LP_HOST}${LP_PERM}"
+        title+="${LP_MARK_BRACKET_OPEN}${LP_USER_RAW}${LP_HOST_RAW}${LP_MARK_PERM}"
 
         PS1+="${LP_PWD}${LP_DIRSTACK}${LP_BRACKET_CLOSE}${LP_SCLS}${LP_AWS_PROFILE}${LP_VENV}${LP_KUBECONTEXT}${LP_PROXY}"
+        title+="${LP_PWD_RAW}${LP_DIRSTACK_RAW}${LP_MARK_BRACKET_CLOSE}${LP_SCLS_RAW}${LP_AWS_PROFILE_RAW}${LP_VENV_RAW}${LP_KUBECONTEXT_RAW}${LP_PROXY_RAW}"
 
         # Add VCS infos
         # If root, the info has not been collected unless LP_ENABLE_VCS_ROOT
         # is set.
         PS1+="${LP_VCS}"
+        title+=" ${LP_VCS_RAW}"
 
         # add return code and prompt mark
         PS1+="${LP_RUNTIME}${LP_ERR}${LP_MARK_PREFIX}${LP_COLOR_MARK}${LP_MARK}${LP_PS1_POSTFIX}"
+        title+="${LP_RUNTIME_RAW}${LP_ERR_RAW}${LP_MARK_PREFIX}${LP_MARK_RAW}${LP_PS1_POSTFIX}"
 
         # Get the current prompt on the fly and make it a title
-        _lp_formatted_title "$PS1"
+        _lp_formatted_title "$title"
 
         # Glue the bash prompt always go to the first column.
         # Avoid glitches after interrupting a command with Ctrl-C
